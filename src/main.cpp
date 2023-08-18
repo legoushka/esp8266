@@ -6,9 +6,10 @@
 #include "DHT.h"
 #include <secret.h>
 
-#define LED_RED D6
-#define LED_BLUE D7
-#define DHT_PIN D4
+#define LED_1 D6
+#define LED_2 D7
+#define LED_0 LED_BUILTIN
+#define DHT_PIN D5
 
 #define DHTTYPE DHT11
 
@@ -32,6 +33,7 @@ DHT dht(DHT_PIN, DHTTYPE);
 
 Supabase db;
 
+
 DynamicJsonDocument JSONdoc(1024);
 String JSON = "";
 
@@ -48,29 +50,56 @@ void networkSetup(){
 
 }
 
+void updateLEDs(){
+  DynamicJsonDocument doc(192);
+  String requestedStatus = db.from("esp8266LED").select("*").eq("mac_address", WiFi.macAddress()).limit(1).doSelect();
+  Serial.println(requestedStatus);
+  deserializeJson(doc, requestedStatus);
+  JsonObject root_0 = doc[0];
+  status.led_0 = root_0["led_0"];
+  status.led_1 = root_0["led_1"];
+  status.led_2 = root_0["led_2"];
+  doc.clear();
+  db.urlQuery_reset();
+  if (status.led_0)
+    digitalWrite(LED_0, LOW);
+  else
+    digitalWrite(LED_0, HIGH);
+  if (status.led_1)
+    digitalWrite(LED_1, HIGH);
+  else
+    digitalWrite(LED_1, LOW);
+  if (status.led_2)
+    digitalWrite(LED_2, HIGH);
+  else
+    digitalWrite(LED_2, LOW);
+  
+}
+
 void setup() {
   Serial.begin(9200);
   Serial.println('\n');
-  pinMode(LED_BUILTIN, OUTPUT);
-  pinMode(LED_RED, OUTPUT);
-  pinMode(LED_BLUE, OUTPUT);
+  pinMode(LED_0, OUTPUT);
+  pinMode(LED_1, OUTPUT);
+  pinMode(LED_2, OUTPUT);
   pinMode(DHT_PIN, INPUT);
   dht.begin();
   networkSetup();
   db.begin(supabase_url, anon_key);
+  updateLEDs();
+  
+  
 }
 
 void loop() {
+  updateLEDs();
   JSONdoc["mac_address"] = WiFi.macAddress();
   Serial.println(dht.readTemperature());
   dht.readTemperature(dht.readHumidity());
   JSONdoc["temperature"] = dht.readTemperature();
   JSONdoc["humidity"] = dht.readHumidity();
-  JSONdoc["led_0"] = status.led_0;
-  JSONdoc["led_1"] = status.led_1;
-  JSONdoc["led_2"] = status.led_2;
-  serializeJson(JSONdoc, JSON);;
-
+  serializeJson(JSONdoc, JSON);
+  
   int HTTPresponseCode = db.insert("esp8266", JSON, false);
   Serial.println(HTTPresponseCode);
   db.urlQuery_reset();
